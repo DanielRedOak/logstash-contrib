@@ -6,6 +6,8 @@ require "stud/buffer"
 
 # This output lets you send metrics to
 # New Relic based on Logstash events.
+# Input will show up as a New Relic Plugin
+# https://docs.newrelic.com/docs/plugin-dev/how-new-relic-works-with-plugin-data
 
 # Default queue_size and poll_time are set according to New Relic recommendations.
 
@@ -16,8 +18,8 @@ class LogStash::Outputs::NewRelicMetrics < LogStash::Outputs::Base
   config_name "newrelic_metrics"
   milestone 1
 
-  # Your New Relic API key.
-  config :api_key, :validate => :string, :required => true
+  # Your New Relic License key.
+  config :license_key, :validate => :string, :required => true
 
   # The hostname of the agent that is reporting the metric to New Relic
   config :agent_host, :validate => :string, :default => 60
@@ -29,13 +31,16 @@ class LogStash::Outputs::NewRelicMetrics < LogStash::Outputs::Base
   config :agent_version, :validate => :number, :default => 1
 
   # The name of the time series.
+  # https://docs.newrelic.com/docs/plugin-dev/metric-naming-reference
   config :metric_hash, :validate => :hash
 
-  # The name of the component that produced the metric.
+  # The name of the component that produced the metric. This shows in New Relic.
+  # A suggestion is to use the application or app component name.
   config :component_name, :validate => :string, :default => "%{metric_component}"
 
-    # The name of the component that produced the metric.
-  config :component_guid, :validate => :string, :default => 'org.logstash.newrelic_metrics'
+  # The name of our 'plugin'. Only the text after the last period shows in New Relic.
+  # MUST be unique across the New Relic platform. eg. com.yourcompany.plugin_name
+  config :component_guid, :validate => :string
 
   # How many events to queue before flushing to New Relic
   # prior to schedule set in @poll_time.  No more than 500 per New Relic
@@ -43,6 +48,9 @@ class LogStash::Outputs::NewRelicMetrics < LogStash::Outputs::Base
 
   # How often (in seconds) to flush queued events to New Relic.  Recommended 60s by New Relic
   config :poll_time, :validate => :number, :default => 60
+
+  # The duration in seconds over which the metric data was collected. 
+  config :duration, :validate => :number, :default => 60
 
   public
   def register
@@ -76,7 +84,7 @@ class LogStash::Outputs::NewRelicMetrics < LogStash::Outputs::Base
     nr_component = Hash.new
     nr_component['name'] = event.sprintf(@component_name)
     nr_component['guid'] = event.sprintf(@component_guid)
-    nr_component['duration'] = event.sprintf(@poll_time) #might want to update this if it is sent based on q size
+    nr_component['duration'] = event.sprintf(@duration) #might want to update this if it is sent based on q size
     nr_component['metrics'] = nr_metric_hash
     @logger.warn("New Relic metric_hash", :data => nr_metric_hash)
 
@@ -113,7 +121,7 @@ class LogStash::Outputs::NewRelicMetrics < LogStash::Outputs::Base
 
     begin
       request.body = nr_overall.to_json
-      request.add_field("X-License-Key", event.sprintf(@api_key))
+      request.add_field("X-License-Key", event.sprintf(@license_key))
       request.add_field("Content-Type", 'application/json')
       request.add_field("Accept", 'application/json')
       response = @client.request(request)
